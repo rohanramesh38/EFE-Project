@@ -76,6 +76,8 @@ def extract_tables_with_pagenum(dict_page):
                 df["key"] = df["key"].apply(preprocess_string)
                 selected_tables.append((i, j, [item[1] for item in dict_page[i] if item[0] == j],df))
             else:
+                # Because the size are different, it will detect multiple tables in one tables and make a mess.
+                # the coordinates have to adjust manually.
                 df_list = tabula.read_pdf(ms_url, pages=j, multiple_tables=True, area=area_coordinates)
                 for table_number, df in enumerate(df_list, start=0):
                     df.rename(columns={df.columns[0]: "key"}, inplace=True)
