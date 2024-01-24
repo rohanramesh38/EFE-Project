@@ -10,7 +10,7 @@ keys = {"Total_Advisor_Led_AUM": "Advisor-led client assets", \
                 "Asset_Mgmt_Rev": "Asset management", \
                     "TotalNNA": "Net new assets"}
 
-report_year = "4Q23"
+report_year = "2Q23"
 
 quarters = functions.name_past_6Q(report_year) #eg. return ["2Q23", "1Q23", "4Q22", "3Q22", "2Q22", "1Q22", "4Q21"]
 reports = [quarters[0], quarters[2], quarters[-2]] #only reports of 2Q23, 4Q22, 1Q22 is needed.
@@ -51,4 +51,4 @@ output[columns_name[1:-2]] = output[columns_name[1:-2]].round(1)
 output["QoQ%"] = output["QoQ%"].astype(int)
 output["YoY%"] = output["YoY%"].astype(int)
 
-output.to_excel(f"./code/screen_template/MS/sample_result/{report_year}.xlsx")
+output.to_excel(f"./screen_template/MS/sample_result/{report_year}.xlsx")
