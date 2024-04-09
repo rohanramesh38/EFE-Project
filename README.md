@@ -26,4 +26,12 @@ The primary objective of this project is to automate the extraction of wealth ma
 - Nat Promma
 - Shuangyu Zhao
 
+## Requirements
+
+Use `pip install -f requirements.txt` to install the necessary dependencies.
+
+To use Llama parse, create an API Key at [https://cloud.llamaindex.ai/parse](https://cloud.llamaindex.ai/parse).
+
+To set up AWS Boto3 in a local environment, refer to [Medium blog aws botto3 setup](https://medium.com/genai-io/aws-bedrock-quick-setup-with-boto3-94ba0d0088ca).
+
 
