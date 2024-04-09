@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from lxml import etree
 import io
 import os
+import re
 import numpy as np
 from fuzzywuzzy import fuzz
 import logging
@@ -16,20 +17,27 @@ nest_asyncio.apply()
 import json
 from llama_parse import LlamaParse
 
+HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \ (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36','Accept-Language': 'en-US, en;q=0.5'}
 
 # Configuring logger
 logger = logging.getLogger(__name__)
 logging.basicConfig(filename='log_file.log', encoding='utf-8', level=logging.INFO)
 
-
+key=os.getenv('llama_parse_key')
 # Initializing LlamaParse object
-parser = LlamaParse(
-    api_key=os.getenv('llama_parse_key'),  
+
+parser =None
+
+try:
+    parser=LlamaParse(
+    api_key='llx-dpXpRsFYAmpeblGlY4yNgGpA1B0jH2ztCuWJqSSRE8FQydWj',  
     result_type="markdown", 
     num_workers=4, 
     verbose=True,
     language="en" 
-)
+  )
+except:
+   print("")
 
 
 
@@ -146,24 +154,82 @@ def get_company_data(dom,comany,current_year,is_json_req=False):
         except:
           logger.info("Error")
 
+  if(comany["Code"]=="GS"):
+
+    path_gs=f"//*[@id='blogArticles']/div/div"
+    url_list=[]
+
+    element_list=dom.xpath(path_gs)
+
+    for ele in element_list:
+       for acordian in ele[2].iter():
+          for link in acordian.iter():
+            if("href" in link.attrib):
+              url=link.attrib["href"]
+              if(url not in url_list):
+                 url_list.append(comany["base_url"]+url)
+    final_all_urls=set()
+
+    for url in url_list:
+      dom,is_success=get_dom_object(url,HEADERS)
+      pdf_url=''
+
+      results_links = dom.xpath("//a[contains(text(), 'Earnings Results')]")
+      results_links1 = dom.xpath("//a[contains(text(), 'Results')]")
+      results_links2=dom.xpath("//a[contains(text(),'Quarter Results')]")
+      results_links3=dom.xpath("//a[contains(text(),'Quarter Earnings')]")
+      results_links4 = dom.xpath("//a[contains(., 'Earnings Results')]")
+
+
+      all_list=[results_links3,results_links2,results_links1,results_links,results_links4]
+
+      for list_item in all_list:
+        if(list_item and "href" in list_item[0].attrib):
+          final_url=''
+          part=list_item[0].attrib["href"].strip()
+
+          if("goldmansachs.com" not in part):
+             final_url=comany["base_url"]+part
+          else:
+             final_url=part
+          if("current" in final_url   ):
+            pattern = r'(\d{4}-q\d{1})'
+            matches = re.findall(pattern, final_url)
+
+            if matches:
+              for match in matches:
+                  year, quarter = match.split("-q")
+                  obj={}
+                  obj["Quarter"]=quarter
+                  obj["FinancialSuppliments"]=final_url
+                  obj["isAvailabe"]=True
+                  if(final_url not in final_all_urls):
+                     data[int(year)].append(obj)
+                     final_all_urls.add(final_url)
+                     break
+
+          break
+           
+
   return data
 
 
 company_list=[
-             {   "Name":"Morgan Stanley",
-                 "Code":"MGS",
-                 "report_avalaible_from":2023,
-                 "report_avalaible_till":2002,
-                 "url":"https://www.morganstanley.com/about-us-ir/earnings-releases",
-                 "base_url":"https://www.morganstanley.com",
-                 "json_req":False
-             },
+             
               {  "Name":"Bank of America",
                  "Code":"BOFA",
                  "report_avalaible_from":2018,
                  "report_avalaible_till":2023,
                  "url":"https://investor.bankofamerica.com/quarterly-earnings",
                  "base_url":"https://investor.bankofamerica.com/quarterly-earnings",
+                 "json_req":False
+             },
+             {   "Name":"Morgan Stanley",
+                 "Code":"MGS",
+                 "report_avalaible_from":2023,
+                 "report_avalaible_till":2002,
+                 "url":"https://www.morganstanley.com/about-us-ir/earnings-releases",
+                 "base_url":"https://www.morganstanley.com",
                  "json_req":False
              },
              {  "Name":"JP Morgan",
@@ -174,11 +240,28 @@ company_list=[
                  "base_url":"https://www.jpmorganchase.com/",
                  "json_url":"https://www.jpmorganchase.com/services/json/jpmc/ir-service/path.service/type=quarterly-earnings.json",
                  "json_req":True
+             },{
+                "Name":"Goldman Sachs",
+                "Code":"GS",
+                 "report_avalaible_from":2010,
+                 "report_avalaible_till":2023,
+                 "url":"https://www.goldmansachs.com/investor-relations/financials/quarterly-earnings-releases/index.html",
+                 "base_url":"https://www.goldmansachs.com/",
+                 "json_req":False
+
+             },{
+                "Name":"Schwab",
+                "Code":"SCHWB",
+                 "report_avalaible_from":2023,
+                 "report_avalaible_till":2023,
+                 "url":"https://www.aboutschwab.com/financial-reports",
+                 "base_url":"https://content.schwab.com/web/retail/public/about-schwab/",
+                 "json_req":False
+
              }
 
 ]
 
-HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \ (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36','Accept-Language': 'en-US, en;q=0.5'}
 
 current_year=2024
 
@@ -186,7 +269,7 @@ def get_all_companys_data():
   all_comany_pdfs=defaultdict(lambda:[])
   data=[]
 
-  for comany in company_list[2:]:
+  for comany in company_list:
     obj=etree.HTML(str(BeautifulSoup('', "html.parser")))
                    
     if(comany["json_req"]):
