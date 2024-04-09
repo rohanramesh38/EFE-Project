@@ -5,6 +5,7 @@ import numpy as np
 import os
 import pandas as pd
 import re
+from openpyxl import load_workbook
 import requests
 import json
 import streamlit as st
@@ -17,6 +18,8 @@ import PyPDF2
 from rich.console import Console
 from rich.markdown import Markdown
 import fitz
+from openpyxl.utils.dataframe import dataframe_to_rows
+
 
 console = Console()
 
@@ -53,9 +56,16 @@ def get_runtime():
 
     return client
 
-def generate_data(text_from_pages,prompt):
-    data=f'\n\nHuman: I m going to give you a table text extracted from a pdf and asking you to analyze the following information and extract from the key data features \\ntranscript.\\nHere is the transcript:\\n<transcript>\\n {text_from_pages} \\n </transcript> \\nYour task is to analyze that transcript, {prompt} \\n\\nAssistant:' 
+def generate_data(text_from_pages,prompt,timeline):
+    data=''
 
+    if(timeline):
+        data=f'\n\nHuman: I m going to give you a table text extracted from a pdf and asking you to analyze the following information and extract from the key data features \\ntranscript.\\nHere is the transcript:\\n<transcript>\\n {text_from_pages} \\n </transcript> \\nYour task is to analyze that transcript, {prompt} {timeline} \\n\\nAssistant:' 
+
+    else:    
+        data=f'\n\nHuman: I m going to give you a table text extracted from a pdf and asking you to analyze the following information and extract from the key data features \\ntranscript.\\nHere is the transcript:\\n<transcript>\\n {text_from_pages} \\n </transcript> \\nYour task is to analyze that transcript, {prompt} \\n\\nAssistant:' 
+
+    #print(data)
     return data
 
 def generate_body(data):
@@ -67,7 +77,7 @@ def generate_body(data):
     })
     return body
 
-def invoke_claude_model(bedrock_client,body):
+def invoke_claude_model(bedrock_client,body,comany):
     modelId = 'anthropic.claude-v2'
     accept = 'application/json'
     contentType = 'application/json'
@@ -77,7 +87,7 @@ def invoke_claude_model(bedrock_client,body):
     response_body = json.loads(response.get('body').read())
 
     result=response_body.get('completion')
-    output=fappend_csv(result)
+    output=fappend_csv(result,sheet=comany)
 
     console.print(Markdown(result))
 
@@ -91,17 +101,18 @@ def invoke_claude_model(bedrock_client,body):
 
 gs_search_words_with_threshold=[('Assets Under Supervision',50),('Earnings Results',80),('AUS',100),('Wealth Management',60)]
 schwab_search_words_with_threshold = [('Total asset management',50),('Total client assets',80),('Net New Assets',30) ]
-bofa_search_words_with_threshold = [('Wealth Management',70,),('Assets under management ',70),('Total assets',100) ]
+bofa_search_words_with_threshold = [('Wealth Management',70,),('Assets  ',70),('Total assets',100) ]
 mgs_search_words_with_threshold =[('Wealth Management Metrics',80),('Advisor‐led channel',60),('Financial Information',40),('Asset Management',50)]
-jpm_search_words_with_threshold =[('Wealth Management',60),('Asset management',60)]
+jpm_search_words_with_threshold =[('Asset & Wealth',80),('Asset',60),('Wealth Management',60)]
 
 
 #Setting up prompts
 
 gs_prompt='''From the given information, create a markdown table with containing wealth management information about Wealth AUS,Wealth net flows, Wealth Management Fees, 
-Net market appreciation / (depreciation)and Total Revenues,Total AUS, dont give an text other than the table and in the markdown table use  'B' for billion and 'M' for million '''
+Net market appreciation / (depreciation)and Total Revenues,Total AUS,Wealth net flows,Wealth Mgmt Fees,Total Revenues , dont give an text other than the table and in the markdown table use  'B' for billion and 'M' for million for the quarter or months ending for the quarter'''
 
-schwab_prompt='From the given information, create a markdown table with containing Asset management information bout Total net new assets, Net growth in client assets, Total Advice Solutions'
+schwab_prompt='''From the given information, create a markdown table with containing Asset management information bout Total net new assets, Net growth in client assets, Total Advice Solutions,Total Client Assets,Investor Services Assets,Advisor Services Assets,Advice Solutions (fee-Based) Assets,Total NNA,Investor Services NNA,
+Advisor Services NNA,Active Brokerage Accts (MMs), dont give an text other than the table and in the markdown table use  'B' for billion and 'M' for million for the quarter or months ending for the quarter'''
 
 bofa_prompt='''From the given information, create a markdown table with containing Global Wealth & Investment Management information, 
 Asset under management, Net Cliet Flow, Total Wealth Advisors.  dont give an text other than the table and in the markdown table use  'B' for billion and 'M' for million'''
@@ -110,7 +121,7 @@ mgs_prompt='''From the given information, create a markdown table with containin
 Advisor‐led client assets, Fee‐based client assets and flows , Self‐directed assets. dont give an text other than the table and in the markdown table use  'B' for billion and 'M' for million'''
 
 jpm_prompt='''From the given information, create a markdown table with containing wealth management information of these metrics [Total client assets, Net new assets 
-Total Assets under management and Assent under supervision,total,net revenue, net income,Asset management fees] give rows only if value exists for a metric or extract metric in similar context. dont give an text other than the table and in the markdown table use  'B' for billion and 'M' for million'''
+Total Assets under management and Assent under supervision,total,net revenue, net income,Asset management fees] Total AUM (incl. Institutional),Private Wealth AUM,Liquidity+Fixed Income+Equity+Multi-asset=Net Asset Flows (incl Institutional) and Market Impact, give rows only if value exists for a metric or extract metric in similar context. dont give an text other than the table and in the markdown table use  'B' for billion and 'M' for million'''
 
 
 
@@ -141,13 +152,25 @@ def parse_rmd_table(table_string):
     data = rows[2:]
     return header, data
 
-def fappend(str):
-    file1 = open("output.csv", "a")
-    file1.write(str)
-    file1.close()
+def fappend(str,sheet):
+    wb = load_workbook('output.xlsx')
+
+    sheet = wb[sheet]  
+    last_row_index = sheet.max_row
 
 
-def fappend_csv(rmd_table_string,to_return=False):
+    column_index = 1  
+    row_index = last_row_index + 1  
+
+    cell = sheet.cell(row=row_index, column=column_index)
+    cell.value = str 
+
+
+    wb.save('output.xlsx')
+    return 
+
+
+def fappend_csv(rmd_table_string,to_return=False,sheet=''):
 
     if(rmd_table_string.find('|')):
         rmd_table_string=rmd_table_string[rmd_table_string.find('|'):]
@@ -155,9 +178,6 @@ def fappend_csv(rmd_table_string,to_return=False):
     header, data = parse_rmd_table(rmd_table_string)
 
     max_columns = max(len(header), max(len(row) for row in data))
-    #print(header,data)
-    #print(type(header),type(data))
-
 
     header = header+ [' '] * (max_columns - len(header))
 
@@ -166,8 +186,18 @@ def fappend_csv(rmd_table_string,to_return=False):
 
 
     data_frame = pd.DataFrame(data, columns=header)
+    wb = load_workbook('output.xlsx')
 
-    data_frame.to_csv('output.csv', mode='a', index=False)
+    sheet = wb[sheet]
+    last_row_index = sheet.max_row
+    rows = list(dataframe_to_rows(data_frame, index=False))
+    for row in rows:
+        sheet.append(row)
+
+    wb.save('output.xlsx')
+
+    
+
 
     return data_frame
 
@@ -180,49 +210,64 @@ def main_result(is_llama_parse=False):
     mgs=all_urls['MGS']
 
     jpm=all_urls['JPM']
+    gs=all_urls['GS']
 
     #print(jpm)
 
     if(bofa):
-        fappend(f"#Bank of America")
         for year in range(current_year,current_year-3,-1):
             if(year in bofa):
                 for quarter in bofa[year]:
                     if(quarter['isAvailabe']):
                         print(f"Year: {year}   Quarter: {quarter['Quarter']}")
-                        fappend(f"\nYear: {year} , Quarter: {quarter['Quarter']}\n")
-                        process(quarter['FinancialSuppliments'],bofa_search_words_with_threshold,bofa_prompt,is_llama_parse)
+                        fappend(f"\nYear: {year} , Quarter: {quarter['Quarter']}\n",'BOFA')
+                        process(quarter['FinancialSuppliments'],bofa_search_words_with_threshold,bofa_prompt,is_llama_parse,year,quarter['Quarter'],'BOFA')
     if(mgs):
-        fappend(f"\n#Morgan Stanley")
 
         for year in range(current_year,current_year-3,-1):
             if(year in mgs):
                 for quarter in mgs[year]:
                     if(quarter['isAvailabe']):
-                        print(f"Year: {year}   Quarter: {quarter['Quarter']}",quarter)
-                        fappend(f"\nYear: {year},   Quarter: {quarter['Quarter']}\n")
-                        process(quarter['FinancialSuppliments'],mgs_search_words_with_threshold,mgs_prompt,is_llama_parse)
+                        print(f"Year: {year}   Quarter: {quarter['Quarter']}",quarter,'MGS')
+                        fappend(f"\nYear: {year},   Quarter: {quarter['Quarter']}\n",'MGS')
+                        process(quarter['FinancialSuppliments'],mgs_search_words_with_threshold,mgs_prompt,is_llama_parse,year,quarter['Quarter'],'MGS')
     
     if(jpm):
-         fappend(f"\n#JP Morgan")
+         #print(jpm)
+          
          for year in range(current_year,current_year-3,-1):
             if(year in jpm):
                 for quarter in jpm[year]:
                     if(quarter['isAvailabe']):
                         print(f"Year: {year}   Quarter: {quarter['Quarter']}",quarter)
-                        fappend(f"\nYear: {year},   Quarter: {quarter['Quarter']}\n")
-                        process(quarter['FinancialSuppliments'],jpm_search_words_with_threshold,jpm_prompt,is_llama_parse)
+                        fappend(f"\nYear: {year},   Quarter: {quarter['Quarter']}\n",'JPM')
+                        process(quarter['FinancialSuppliments'],jpm_search_words_with_threshold,jpm_prompt,is_llama_parse,year,quarter['Quarter'],'JPM')
+
+
+    if(gs):
+        for year in range(current_year,current_year-3,-1):
+             if(year in gs):
+                for quarter in gs[year]:
+                    if(quarter['isAvailabe']):
+                        print(f"Year: {year}   Quarter: {quarter['Quarter']}",quarter)
+                        fappend(f"\nYear: {year},   Quarter: {quarter['Quarter']}\n",'GS')
+                        process(quarter['FinancialSuppliments'],gs_search_words_with_threshold,gs_prompt,is_llama_parse,year,quarter['Quarter'],'GS')
 
 
 
 
-
-
-def process(url,thresh,prompt,is_llama_parse):
+def process(url,thresh,prompt,is_llama_parse,year='',quarter='',company=''):
     text=""
     matching_pages,text=extract_pages_with_text_pypdf(url,thresh)
+    print(matching_pages,url)
     if(is_llama_parse):
         matching_pages,text=extract_pages_with_text_llama_parse(url,thresh,is_llama_parse)
+
+    timeline=''
+
+    if(year and quarter):
+        timeline= f"Extract for the year {year} and quarter{quarter} / Q{quarter}"
+
 
     # if(not matching_pages):
     #     print("---------")
@@ -233,15 +278,16 @@ def process(url,thresh,prompt,is_llama_parse):
     #     print(matching_pages,url)
     
 
-    return invoke(text,prompt)
+    return invoke(text,prompt,timeline,company)
 
     
 
 
-def invoke(text,prompt):
-    data=generate_data(text,prompt)
+def invoke(text,prompt,timeline='',comany=''):
+
+    data=generate_data(text,prompt,timeline)
     body=generate_body(data)
-    return invoke_claude_model(bedrock_client,body)
+    return invoke_claude_model(bedrock_client,body,comany)
 
 
 def web_user_interface():
@@ -311,10 +357,13 @@ if __name__ == "__main__":
     bedrock_client= get_runtime()
 
     main_result(is_llama_parse=False)
+    quarter="https://www.jpmorganchase.com//content/dam/jpmc/jpmorgan-chase-and-co/investor-relations/documents/quarterly-earnings/2023/4th-quarter/16d9371e-30e9-4898-abf6-d1f7c86fd311.pdf"
+
+    #process(quarter,jpm_search_words_with_threshold,jpm_prompt,False,2023,4)
+
 
     #print(get_all_companys_data())
 
     #web_user_interface()
 
-
-    
+    #print(get_all_companys_data())
