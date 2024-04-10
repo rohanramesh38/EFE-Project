@@ -10,5 +10,5 @@ pypdf==4.1.0
 xformers==0.0.25
 InstructorEmbedding==1.0.1
 fuzzywuzzy==0.18.0
-
-
+requests==2.31.0
+pandas==1.4.2
