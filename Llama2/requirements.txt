@@ -1,3 +1,13 @@
+torch==2.2.1+cu118
+auto-gptq=0.7.1+cu118
+
+PyPDF2==3.0.1
+PyMuPDF==1.24.0
 sentence_transformers==2.2.2
 chromadb==0.4.5
 langchain==0.0.266
+
+langchain==0.0.266
+
+
+
